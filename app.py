@@ -125,7 +125,7 @@ def send_file(chat_id, file_path, caption=""):
 def webhook():
     try:
         update = request.json
-        print("Received update:", json.dumps(update))  # دیباگ برای چک کردن دریافت پیام
+        print("Received update:", json.dumps(update))  # دیباگ دریافت پیام
     except Exception as e:
         send_message(ADMIN_ID, f"خطا در دریافت درخواست: {str(e)}")
         return jsonify({"status": "error"})
@@ -139,25 +139,27 @@ def webhook():
         if text == '/start':
             join_buttons = [[{"text": f"عضویت در {ch['name']}", "url": ch['url']}] for ch in CHANNELS]
             join_buttons.append([{"text": "تایید عضویت ✅", "callback_data": "verify_me"}])
-            send_message(
+            if not send_message(
                 chat_id,
                 """💥 پیام ادمین <b>#سالس_استرول</b>: 💥
 🆔️ PV SUPPORTER: <b>@RealSalesestrol</b>
 🔐 برای امضای فایل APK (v2+v3)، لطفاً در کانال‌ها و گروه زیر عضو شوید:""",
                 join_buttons
-            )
+            ):
+                send_message(ADMIN_ID, f"خطا در ارسال پیام /start به {chat_id}")
 
         elif text == '/sign':
             is_member, failed_channels = is_real_member(user_id)
             if is_member:
-                send_message(
+                if not send_message(
                     chat_id,
                     """🖋 لطفاً فایل APK خود را آپلود کنید.
 امضا توسط <b>#سالس_استرول</b> با طرح‌های v2 و v3 (سازگار با اندروید 7.0+) انجام خواهد شد."""
-                )
+                ):
+                    send_message(ADMIN_ID, f"خطا در ارسال پیام /sign به {chat_id}")
             else:
                 failed_channel_names = ", ".join(failed_channels)
-                send_message(
+                if not send_message(
                     chat_id,
                     f"""⚠️ شما هنوز در موارد زیر عضو نشده‌اید:
 {failed_channel_names}
@@ -165,13 +167,15 @@ def webhook():
 لطفاً ابتدا در کانال‌ها و گروه <b>#سالس_استرول</b> عضو شوید و دوباره تلاش کنید.""",
                     [[{"text": "عضویت در کانال‌ها و گروه", "url": CHANNELS[0]['url']}], 
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
-                )
+                ):
+                    send_message(ADMIN_ID, f"خطا در ارسال پیام عضویت به {chat_id}")
 
         elif 'document' in message:
             file_info = message['document']
             file_name = secure_filename(file_info.get('file_name', 'unknown'))
             mime_type = file_info.get('mime_type', 'unknown')
-            print(f"Received file: {file_name}, mime_type: {mime_type}")  # دیباگ نوع فایل
+            file_size = file_info.get('file_size', 0) / 1024  # تبدیل به کیلوبایت
+            print(f"Received file: {file_name}, mime_type: {mime_type}, size: {file_size} KB")  # دیباگ دقیق
 
             if mime_type != 'application/vnd.android.package-archive':
                 send_message(chat_id, f"⚠️ فایل {file_name} یک APK معتبر نیست! لطفاً فایل APK آپلود کنید.")
@@ -192,8 +196,7 @@ def webhook():
                 return jsonify({"status": "ok"})
 
             file_id = file_info['file_id']
-            file_size = file_info.get('file_size', 0) / (1024 * 1024)  # تبدیل به مگابایت
-            if file_size > 50:
+            if file_size > 50 * 1024:  # حداکثر 50 مگابایت
                 send_message(chat_id, "⚠️ فایل APK خیلی بزرگه! حداکثر حجم مجاز 50 مگابایته.")
                 return jsonify({"status": "ok"})
 
@@ -215,7 +218,7 @@ def webhook():
                 while sign_queue:
                     current_user_id, current_chat_id, current_file_id, current_file_name = sign_queue[0]
                     try:
-                        file_response = requests.get(f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={current_file_id}")
+                        file_response = requests.get(f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={current_file_id}", timeout=10)
                         if not file_response.json().get('ok'):
                             send_message(current_chat_id, "⚠️ خطا در دریافت فایل از تلگرام!")
                             send_message(ADMIN_ID, f"خطا در دریافت فایل {current_file_name} برای کاربر {current_user_id}")
@@ -227,7 +230,8 @@ def webhook():
                         input_apk = os.path.join(UPLOAD_FOLDER, current_file_name)
 
                         with open(input_apk, 'wb') as f:
-                            f.write(requests.get(file_url).content)
+                            file_content = requests.get(file_url, timeout=10).content
+                            f.write(file_content)
 
                         output_apk = os.path.join(SIGNED_FOLDER, "signed_" + current_file_name)
                         success, error = sign_apk(input_apk, output_apk)
@@ -262,15 +266,16 @@ def webhook():
         if data == 'verify_me':
             is_member, failed_channels = is_real_member(user_id)
             if is_member:
-                send_message(
+                if not send_message(
                     chat_id,
                     """🎉 عضویت شما تأیید شد!
 برای امضای فایل APK، از دستور /sign استفاده کنید و سپس فایل APK خود را آپلود کنید.
 مدیریت: <b>#سالس_استرول</b> | <b>@RealSalesestrol</b>"""
-                )
+                ):
+                    send_message(ADMIN_ID, f"خطا در ارسال پیام تأیید عضویت به {chat_id}")
             else:
                 failed_channel_names = ", ".join(failed_channels)
-                send_message(
+                if not send_message(
                     chat_id,
                     f"""⚠️ شما هنوز در موارد زیر عضو نشده‌اید:
 {failed_channel_names}
@@ -278,7 +283,8 @@ def webhook():
 لطفاً ابتدا در کانال‌ها و گروه <b>#سالس_استرول</b> عضو شوید و دوباره تلاش کنید.""",
                     [[{"text": "عضویت در کانال‌ها و گروه", "url": CHANNELS[0]['url']}], 
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
-                )
+                ):
+                    send_message(ADMIN_ID, f"خطا در ارسال پیام عضویت به {chat_id}")
 
     return jsonify({"status": "ok"})
 
