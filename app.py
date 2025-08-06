@@ -177,7 +177,8 @@ def webhook():
             file_size = file_info.get('file_size', 0) / 1024  # تبدیل به کیلوبایت
             print(f"Received file: {file_name}, mime_type: {mime_type}, size: {file_size} KB")  # دیباگ دقیق
 
-            if mime_type != 'application/vnd.android.package-archive':
+            # چک انعطاف‌پذیرتر برای تشخیص APK
+            if not (mime_type == 'application/vnd.android.package-archive' or file_name.lower().endswith('.apk')):
                 send_message(chat_id, f"⚠️ فایل {file_name} یک APK معتبر نیست! لطفاً فایل APK آپلود کنید.")
                 return jsonify({"status": "ok"})
 
