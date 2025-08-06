@@ -8,15 +8,15 @@ from collections import deque
 
 app = Flask(__name__)
 
-# تنظیمات اصلی (به‌روزرسانی‌شده با رمز و alias جدید)
+# تنظیمات اصلی
 TOKEN = os.getenv("TELEGRAM_TOKEN", "7977369475:AAElCnt-uMl5XtrONdIVILTvRcyRQQqr2ik")
 ADMIN_ID = 7934946400
 UPLOAD_FOLDER = "uploads"
 SIGNED_FOLDER = "signed"
 KEYSTORE_PATH = "my.keystore"
-KEYSTORE_PASSWORD = "123456"  # رمز جدید keystore
-KEY_ALIAS = "mykey"          # alias جدید keystore
-KEY_PASSWORD = "123456"      # رمز جدید keystore
+KEYSTORE_PASSWORD = "123456"  # رمز keystore که ساختیم
+KEY_ALIAS = "mykey"          # alias keystore که ساختیم
+KEY_PASSWORD = "123456"      # رمز keystore که ساختیم
 AVERAGE_SIGN_TIME = 30  # زمان متوسط امضا به ثانیه
 
 # ایجاد پوشه‌ها
@@ -62,11 +62,9 @@ def is_real_member(user_id):
 
 def sign_apk(input_apk, output_apk):
     try:
-        # چک کردن وجود فایل keystore
         if not os.path.exists(KEYSTORE_PATH):
             return False, f"خطا: فایل {KEYSTORE_PATH} پیدا نشد!"
 
-        # Align کردن فایل APK
         aligned_apk = os.path.join(SIGNED_FOLDER, "aligned_" + secure_filename(input_apk))
         subprocess.run(
             ["zipalign", "-f", "-v", "4", input_apk, aligned_apk],
@@ -75,7 +73,6 @@ def sign_apk(input_apk, output_apk):
             text=True
         )
 
-        # امضای فایل با v2 و v3 (v1 خاموش)
         subprocess.run(
             [
                 "apksigner", "sign",
@@ -106,7 +103,8 @@ def send_message(chat_id, text, buttons=None):
     try:
         response = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=data)
         return response.json().get('ok')
-    except:
+    except Exception as e:
+        send_message(ADMIN_ID, f"خطا در ارسال پیام به {chat_id}: {str(e)}")
         return False
 
 def send_file(chat_id, file_path, caption=""):
@@ -118,7 +116,8 @@ def send_file(chat_id, file_path, caption=""):
                 files={"document": file}
             )
         return response.json().get('ok')
-    except:
+    except Exception as e:
+        send_message(ADMIN_ID, f"خطا در ارسال فایل به {chat_id}: {str(e)}")
         return False
 
 @app.route(f'/{TOKEN}', methods=['POST'])
@@ -185,7 +184,7 @@ def webhook():
             file_name = secure_filename(file_info.get('file_name', 'unknown.apk'))
             file_id = file_info['file_id']
 
-            # چک کردن حجم فایل (حداکثر 50 مگابایت برای تلگرام)
+            # چک کردن حجم فایل
             file_size = file_info.get('file_size', 0) / (1024 * 1024)  # تبدیل به مگابایت
             if file_size > 50:
                 send_message(chat_id, "⚠️ فایل APK خیلی بزرگه! حداکثر حجم مجاز 50 مگابایته.")
@@ -196,13 +195,14 @@ def webhook():
             queue_position = len(sign_queue)
             estimated_time = queue_position * AVERAGE_SIGN_TIME // 60
 
-            send_message(
+            if not send_message(
                 chat_id,
                 f"""✅ فایل APK شما ({file_name}) دریافت شد!
 موقعیت شما در صف: {queue_position}
 تخمین زمان امضا: حدود {estimated_time} دقیقه
 لطفاً صبر کنید..."""
-            )
+            ):
+                send_message(ADMIN_ID, f"خطا در ارسال پیام تأیید به {chat_id} برای فایل {file_name}")
 
             if len(sign_queue) == 1:
                 while sign_queue:
@@ -230,7 +230,7 @@ def webhook():
                                 current_chat_id,
                                 output_apk,
                                 f"""✅ فایل APK شما با موفقیت امضا شد (v2+v3، سازگار با اندروید 7.0+)!
-امضا توسط <b>#سالس_استرول</b> | <b>@RealSalesestrol</b>"""
+امضا توسط <b>ربات پیشرفته #عمو_سالس</b> | <b>@RealSalesestrol</b>"""
                             ):
                                 os.remove(input_apk)
                                 os.remove(output_apk)
