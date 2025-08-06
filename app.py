@@ -65,7 +65,7 @@ def sign_apk(input_apk, output_apk):
         if not os.path.exists(KEYSTORE_PATH):
             return False, f"خطا: فایل {KEYSTORE_PATH} پیدا نشد!"
 
-        # حذف مرحله zipalign و مستقیم امضا
+        # فقط از apksigner استفاده می‌کنیم
         apk_signer_path = os.getenv("APK_SIGNER_PATH", "/opt/android-sdk/build-tools/34.0.0/apksigner")
         print(f"Using apksigner path: {apk_signer_path}")  # دیباگ
         subprocess.run(
