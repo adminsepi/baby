@@ -14,9 +14,9 @@ ADMIN_ID = 7934946400
 UPLOAD_FOLDER = "uploads"
 SIGNED_FOLDER = "signed"
 KEYSTORE_PATH = "my.keystore"
-KEYSTORE_PASSWORD = "123456"  # رمز keystore که ساختیم
-KEY_ALIAS = "mykey"          # alias keystore که ساختیم
-KEY_PASSWORD = "123456"      # رمز keystore که ساختیم
+KEYSTORE_PASSWORD = "123456"  # رمز keystore
+KEY_ALIAS = "mykey"          # alias keystore
+KEY_PASSWORD = "123456"      # رمز keystore
 AVERAGE_SIGN_TIME = 30  # زمان متوسط امضا به ثانیه
 
 # ایجاد پوشه‌ها
@@ -101,7 +101,7 @@ def send_message(chat_id, text, buttons=None):
     if buttons:
         data["reply_markup"] = json.dumps({"inline_keyboard": buttons})
     try:
-        response = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=data)
+        response = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=data, timeout=10)
         return response.json().get('ok')
     except Exception as e:
         send_message(ADMIN_ID, f"خطا در ارسال پیام به {chat_id}: {str(e)}")
@@ -113,7 +113,8 @@ def send_file(chat_id, file_path, caption=""):
             response = requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/sendDocument",
                 data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
-                files={"document": file}
+                files={"document": file},
+                timeout=10
             )
         return response.json().get('ok')
     except Exception as e:
@@ -124,6 +125,7 @@ def send_file(chat_id, file_path, caption=""):
 def webhook():
     try:
         update = request.json
+        print("Received update:", json.dumps(update))  # دیباگ برای چک کردن دریافت پیام
     except Exception as e:
         send_message(ADMIN_ID, f"خطا در دریافت درخواست: {str(e)}")
         return jsonify({"status": "error"})
@@ -151,7 +153,7 @@ def webhook():
                 send_message(
                     chat_id,
                     """🖋 لطفاً فایل APK خود را آپلود کنید.
-امضا توسط <b>#سالس_استرول</b> با طرح‌های ورژن ۲ + ورژن ۳ (سازگار با اندروید 7.0+) انجام خواهد شد."""
+امضا توسط <b>#سالس_استرول</b> با طرح‌های v2 و v3 (سازگار با اندروید 7.0+) انجام خواهد شد."""
                 )
             else:
                 failed_channel_names = ", ".join(failed_channels)
@@ -165,7 +167,16 @@ def webhook():
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
                 )
 
-        elif 'document' in message and message['document'].get('mime_type') == 'application/vnd.android.package-archive':
+        elif 'document' in message:
+            file_info = message['document']
+            file_name = secure_filename(file_info.get('file_name', 'unknown'))
+            mime_type = file_info.get('mime_type', 'unknown')
+            print(f"Received file: {file_name}, mime_type: {mime_type}")  # دیباگ نوع فایل
+
+            if mime_type != 'application/vnd.android.package-archive':
+                send_message(chat_id, f"⚠️ فایل {file_name} یک APK معتبر نیست! لطفاً فایل APK آپلود کنید.")
+                return jsonify({"status": "ok"})
+
             is_member, failed_channels = is_real_member(user_id)
             if not is_member:
                 failed_channel_names = ", ".join(failed_channels)
@@ -180,11 +191,7 @@ def webhook():
                 )
                 return jsonify({"status": "ok"})
 
-            file_info = message['document']
-            file_name = secure_filename(file_info.get('file_name', 'unknown.apk'))
             file_id = file_info['file_id']
-
-            # چک کردن حجم فایل
             file_size = file_info.get('file_size', 0) / (1024 * 1024)  # تبدیل به مگابایت
             if file_size > 50:
                 send_message(chat_id, "⚠️ فایل APK خیلی بزرگه! حداکثر حجم مجاز 50 مگابایته.")
@@ -230,7 +237,7 @@ def webhook():
                                 current_chat_id,
                                 output_apk,
                                 f"""✅ فایل APK شما با موفقیت امضا شد (v2+v3، سازگار با اندروید 7.0+)!
-امضا توسط <b>ربات پیشرفته #عمو_سالس</b> | <b>@RealSalesestrol</b>"""
+امضا توسط <b>#سالس_استرول</b> | <b>@RealSalesestrol</b>"""
                             ):
                                 os.remove(input_apk)
                                 os.remove(output_apk)
