@@ -1,25 +1,22 @@
 import json
 import requests
-import hashlib
-import time
 import os
 import subprocess
 from flask import Flask, request, jsonify
-from datetime import datetime
 from werkzeug.utils import secure_filename
 from collections import deque
 
 app = Flask(__name__)
 
-# تنظیمات اصلی
-TOKEN = os.getenv("TELEGRAM_TOKEN", "7930478627:AAHz3D3ShkOVAHjQVj5-KRuLY-585jmXdus")
-ADMIN_ID = 8064459756
+# تنظیمات اصلی (به‌روزرسانی‌شده با رمز و alias جدید)
+TOKEN = os.getenv("TELEGRAM_TOKEN", "7977369475:AAElCnt-uMl5XtrONdIVILTvRcyRQQqr2ik")
+ADMIN_ID = 7934946400
 UPLOAD_FOLDER = "uploads"
 SIGNED_FOLDER = "signed"
 KEYSTORE_PATH = "my.keystore"
-KEYSTORE_PASSWORD = "yourpassword"
-KEY_ALIAS = "youralias"
-KEY_PASSWORD = "yourpassword"
+KEYSTORE_PASSWORD = "123456"  # رمز جدید keystore
+KEY_ALIAS = "mykey"          # alias جدید keystore
+KEY_PASSWORD = "123456"      # رمز جدید keystore
 AVERAGE_SIGN_TIME = 30  # زمان متوسط امضا به ثانیه
 
 # ایجاد پوشه‌ها
@@ -48,49 +45,28 @@ CHANNELS = [
     }
 ]
 
-def get_chat_id(channel_username_or_id):
-    try:
-        response = requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/getChat",
-            json={"chat_id": channel_username_or_id},
-            timeout=10
-        ).json()
-        if response.get('ok'):
-            return response['result']['id']
-        return None
-    except:
-        return None
-
 def is_real_member(user_id):
     failed_channels = []
     for channel in CHANNELS:
         try:
             response = requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/getChatMember",
-                json={
-                    "chat_id": channel['chat_id'],
-                    "user_id": user_id
-                },
+                json={"chat_id": channel['chat_id'], "user_id": user_id},
                 timeout=10
             ).json()
-            
-            if not response.get('ok'):
+            if not response.get('ok') or response['result']['status'] not in ['member', 'administrator', 'creator']:
                 failed_channels.append(channel['name'])
-                continue
-                
-            status = response['result']['status']
-            if status not in ['member', 'administrator', 'creator']:
-                failed_channels.append(channel['name'])
-                
-        except:
+        except Exception as e:
             failed_channels.append(channel['name'])
-    
-    if failed_channels:
-        return False, failed_channels
-    return True, []
+    return (False, failed_channels) if failed_channels else (True, [])
 
 def sign_apk(input_apk, output_apk):
     try:
+        # چک کردن وجود فایل keystore
+        if not os.path.exists(KEYSTORE_PATH):
+            return False, f"خطا: فایل {KEYSTORE_PATH} پیدا نشد!"
+
+        # Align کردن فایل APK
         aligned_apk = os.path.join(SIGNED_FOLDER, "aligned_" + secure_filename(input_apk))
         subprocess.run(
             ["zipalign", "-f", "-v", "4", input_apk, aligned_apk],
@@ -98,7 +74,8 @@ def sign_apk(input_apk, output_apk):
             capture_output=True,
             text=True
         )
-        
+
+        # امضای فایل با v2 و v3 (v1 خاموش)
         subprocess.run(
             [
                 "apksigner", "sign",
@@ -123,40 +100,44 @@ def sign_apk(input_apk, output_apk):
         return False, f"خطای عمومی: {str(e)}"
 
 def send_message(chat_id, text, buttons=None):
-    data = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
+    data = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if buttons:
         data["reply_markup"] = json.dumps({"inline_keyboard": buttons})
-    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=data)
+    try:
+        response = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=data)
+        return response.json().get('ok')
+    except:
+        return False
 
 def send_file(chat_id, file_path, caption=""):
-    with open(file_path, 'rb') as file:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
-            files={"document": file}
-        )
+    try:
+        with open(file_path, 'rb') as file:
+            response = requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendDocument",
+                data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                files={"document": file}
+            )
+        return response.json().get('ok')
+    except:
+        return False
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = request.json
-    
+    try:
+        update = request.json
+    except Exception as e:
+        send_message(ADMIN_ID, f"خطا در دریافت درخواست: {str(e)}")
+        return jsonify({"status": "error"})
+
     if 'message' in update:
         message = update['message']
         chat_id = message['chat']['id']
         user_id = message['from']['id']
         text = message.get('text', '')
-        
+
         if text == '/start':
-            join_buttons = [
-                [{"text": f"عضویت در {ch['name']}", "url": ch['url']}] 
-                for ch in CHANNELS
-            ]
+            join_buttons = [[{"text": f"عضویت در {ch['name']}", "url": ch['url']}] for ch in CHANNELS]
             join_buttons.append([{"text": "تایید عضویت ✅", "callback_data": "verify_me"}])
-            
             send_message(
                 chat_id,
                 """💥 پیام ادمین <b>#سالس_استرول</b>: 💥
@@ -164,14 +145,14 @@ def webhook():
 🔐 برای امضای فایل APK (v2+v3)، لطفاً در کانال‌ها و گروه زیر عضو شوید:""",
                 join_buttons
             )
-        
+
         elif text == '/sign':
             is_member, failed_channels = is_real_member(user_id)
             if is_member:
                 send_message(
                     chat_id,
                     """🖋 لطفاً فایل APK خود را آپلود کنید.
-امضا توسط <b>#سالس_استرول</b> با طرح‌های v2 و v3 انجام خواهد شد."""
+امضا توسط <b>#سالس_استرول</b> با طرح‌های v2 و v3 (سازگار با اندروید 7.0+) انجام خواهد شد."""
                 )
             else:
                 failed_channel_names = ", ".join(failed_channels)
@@ -184,8 +165,8 @@ def webhook():
                     [[{"text": "عضویت در کانال‌ها و گروه", "url": CHANNELS[0]['url']}], 
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
                 )
-        
-        elif 'document' in message and message['document']['mime_type'] == 'application/vnd.android.package-archive':
+
+        elif 'document' in message and message['document'].get('mime_type') == 'application/vnd.android.package-archive':
             is_member, failed_channels = is_real_member(user_id)
             if not is_member:
                 failed_channel_names = ", ".join(failed_channels)
@@ -199,68 +180,78 @@ def webhook():
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
                 )
                 return jsonify({"status": "ok"})
-                
+
             file_info = message['document']
-            file_name = secure_filename(file_info['file_name'])
+            file_name = secure_filename(file_info.get('file_name', 'unknown.apk'))
             file_id = file_info['file_id']
-            
-            # اضافه کردن کاربر به صف
+
+            # چک کردن حجم فایل (حداکثر 50 مگابایت برای تلگرام)
+            file_size = file_info.get('file_size', 0) / (1024 * 1024)  # تبدیل به مگابایت
+            if file_size > 50:
+                send_message(chat_id, "⚠️ فایل APK خیلی بزرگه! حداکثر حجم مجاز 50 مگابایته.")
+                return jsonify({"status": "ok"})
+
+            # اضافه کردن به صف
             sign_queue.append((user_id, chat_id, file_id, file_name))
             queue_position = len(sign_queue)
-            estimated_time = queue_position * AVERAGE_SIGN_TIME // 60  # تخمین زمان به دقیقه
-            
-            # ارسال پیام تأیید دریافت فایل
+            estimated_time = queue_position * AVERAGE_SIGN_TIME // 60
+
             send_message(
                 chat_id,
-                f"""✅ فایل APK شما دریافت شد!
+                f"""✅ فایل APK شما ({file_name}) دریافت شد!
 موقعیت شما در صف: {queue_position}
 تخمین زمان امضا: حدود {estimated_time} دقیقه
 لطفاً صبر کنید..."""
             )
-            
-            # پردازش صف
-            if len(sign_queue) == 1:  # فقط وقتی اولین نفره، پردازش رو شروع کن
+
+            if len(sign_queue) == 1:
                 while sign_queue:
                     current_user_id, current_chat_id, current_file_id, current_file_name = sign_queue[0]
-                    
-                    # دانلود فایل APK
-                    file_response = requests.get(f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={current_file_id}")
-                    if not file_response.json().get('ok'):
-                        send_message(current_chat_id, "⚠️ خطا در دریافت فایل!")
-                        sign_queue.popleft()
-                        continue
-                        
-                    file_path = file_response.json()['result']['file_path']
-                    file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-                    input_apk = os.path.join(UPLOAD_FOLDER, current_file_name)
-                    
-                    with open(input_apk, 'wb') as f:
-                        f.write(requests.get(file_url).content)
-                    
-                    output_apk = os.path.join(SIGNED_FOLDER, "signed_" + current_file_name)
-                    success, error = sign_apk(input_apk, output_apk)
-                    
-                    if success:
-                        send_file(
-                            current_chat_id,
-                            output_apk,
-                            f"""✅ فایل APK شما با موفقیت امضا شد (v2+v3)!
+                    try:
+                        file_response = requests.get(f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={current_file_id}")
+                        if not file_response.json().get('ok'):
+                            send_message(current_chat_id, "⚠️ خطا در دریافت فایل از تلگرام!")
+                            send_message(ADMIN_ID, f"خطا در دریافت فایل {current_file_name} برای کاربر {current_user_id}")
+                            sign_queue.popleft()
+                            continue
+
+                        file_path = file_response.json()['result']['file_path']
+                        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+                        input_apk = os.path.join(UPLOAD_FOLDER, current_file_name)
+
+                        with open(input_apk, 'wb') as f:
+                            f.write(requests.get(file_url).content)
+
+                        output_apk = os.path.join(SIGNED_FOLDER, "signed_" + current_file_name)
+                        success, error = sign_apk(input_apk, output_apk)
+
+                        if success:
+                            if send_file(
+                                current_chat_id,
+                                output_apk,
+                                f"""✅ فایل APK شما با موفقیت امضا شد (v2+v3، سازگار با اندروید 7.0+)!
 امضا توسط <b>#سالس_استرول</b> | <b>@RealSalesestrol</b>"""
-                        )
-                        os.remove(input_apk)
-                        os.remove(output_apk)
-                    else:
-                        send_message(current_chat_id, f"❌ خطا در امضای فایل: {error}")
-                        os.remove(input_apk)
-                    
+                            ):
+                                os.remove(input_apk)
+                                os.remove(output_apk)
+                            else:
+                                send_message(current_chat_id, "❌ خطا در ارسال فایل امضاشده!")
+                                send_message(ADMIN_ID, f"خطا در ارسال فایل امضاشده {current_file_name} به کاربر {current_user_id}")
+                        else:
+                            send_message(current_chat_id, f"❌ خطا در امضای فایل: {error}")
+                            send_message(ADMIN_ID, f"خطا در امضای فایل {current_file_name} برای کاربر {current_user_id}: {error}")
+                            os.remove(input_apk)
+                    except Exception as e:
+                        send_message(current_chat_id, f"❌ خطا در پردازش فایل: {str(e)}")
+                        send_message(ADMIN_ID, f"خطا در پردازش فایل {current_file_name} برای کاربر {current_user_id}: {str(e)}")
                     sign_queue.popleft()
-            
+
     elif 'callback_query' in update:
         callback = update['callback_query']
         chat_id = callback['message']['chat']['id']
         user_id = callback['from']['id']
         data = callback['data']
-        
+
         if data == 'verify_me':
             is_member, failed_channels = is_real_member(user_id)
             if is_member:
@@ -281,7 +272,7 @@ def webhook():
                     [[{"text": "عضویت در کانال‌ها و گروه", "url": CHANNELS[0]['url']}], 
                      [{"text": "تلاش مجدد", "callback_data": "verify_me"}]]
                 )
-    
+
     return jsonify({"status": "ok"})
 
 if __name__ == '__main__':
