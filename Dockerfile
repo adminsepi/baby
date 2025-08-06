@@ -1,7 +1,12 @@
 FROM python:3.13-slim
 
 # نصب پیش‌نیازها
-RUN apt-get update && apt-get install -y openjdk-21-jdk wget unzip
+RUN apt-get update && apt-get install -y \
+    openjdk-21-jdk \
+    wget \
+    unzip \
+    curl \
+    bash
 
 # تنظیم محیط Android SDK
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
@@ -12,13 +17,15 @@ RUN mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdli
 
 # نصب build-tools و platform-tools با دیباگ
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${ANDROID_SDK_ROOT}/platform-tools
-RUN echo "Checking sdkmanager..." && \
-    sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
-    echo "Verifying tools..." && \
-    ls ${ANDROID_SDK_ROOT}/build-tools/34.0.0/ && \
-    ls ${ANDROID_SDK_ROOT}/platform-tools/ && \
+RUN echo "Installing Android SDK tools..." && \
+    yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
+    echo "Verifying installation..." && \
+    ls -la ${ANDROID_SDK_ROOT}/build-tools/34.0.0/ && \
+    ls -la ${ANDROID_SDK_ROOT}/platform-tools/ && \
     which zipalign && \
-    zipalign --version
+    zipalign --version && \
+    which apksigner && \
+    apksigner --version
 
 # تنظیم کارگاه
 WORKDIR /app
