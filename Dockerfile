@@ -10,9 +10,15 @@ RUN wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477
 RUN unzip -q /tmp/cmdline-tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools
 RUN mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
 
-# نصب build-tools و platform-tools
+# نصب build-tools و platform-tools با دیباگ
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${ANDROID_SDK_ROOT}/platform-tools
-RUN yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools"
+RUN echo "Checking sdkmanager..." && \
+    sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
+    echo "Verifying tools..." && \
+    ls ${ANDROID_SDK_ROOT}/build-tools/34.0.0/ && \
+    ls ${ANDROID_SDK_ROOT}/platform-tools/ && \
+    which zipalign && \
+    zipalign --version
 
 # تنظیم کارگاه
 WORKDIR /app
