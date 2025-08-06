@@ -20,11 +20,9 @@ RUN mkdir -p ${ANDROID_SDK_ROOT} && \
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${ANDROID_SDK_ROOT}/platform-tools
 RUN yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
     echo "Verifying tools..." && \
+    ls -la ${ANDROID_SDK_ROOT}/build-tools/ && \
     ZIPALIGN_PATH=$(find ${ANDROID_SDK_ROOT}/build-tools/ -name zipalign | head -n 1) && \
-    echo "Found zipalign at: ${ZIPALIGN_PATH}" && \
-    export ZIPALIGN_PATH=${ZIPALIGN_PATH} && \
-    ls -la ${ZIPALIGN_PATH} && \
-    ${ZIPALIGN_PATH} --version && \
+    if [ -z "$ZIPALIGN_PATH" ]; then echo "Error: zipalign not found!" && exit 1; else echo "Found zipalign at: ${ZIPALIGN_PATH}" && ls -la ${ZIPALIGN_PATH} && ${ZIPALIGN_PATH} --version; fi && \
     which apksigner && \
     apksigner --version
 
@@ -36,4 +34,5 @@ WORKDIR /app
 COPY . .
 
 ENV PORT=5000
-CMD ["sh", "-c", "export ZIPALIGN_PATH=${ZIPALIGN_PATH} && gunicorn --bind 0.0.0.0:${PORT} app:app"]
+ENV ZIPALIGN_PATH=${ZIPALIGN_PATH}
+CMD ["sh", "-c", "echo 'Using ZIPALIGN_PATH: ${ZIPALIGN_PATH}' && gunicorn --bind 0.0.0.0:${PORT} app:app"]
