@@ -67,16 +67,18 @@ def sign_apk(input_apk, output_apk):
             return False, f"خطا: فایل {KEYSTORE_PATH} پیدا نشد!"
 
         aligned_apk = os.path.join(SIGNED_FOLDER, "aligned_" + secure_filename(input_apk))
-        print(f"Using zipalign path: {ZIPALIGN_PATH}")  # دیباگ مسیر
-        # استفاده از مسیر از متغیر محیط
-        subprocess.run(
+        print(f"Using zipalign path: {ZIPALIGN_PATH}")
+
+        # اجرای zipalign
+        zipalign_result = subprocess.run(
             [ZIPALIGN_PATH, "-f", "-v", "4", input_apk, aligned_apk],
             check=True,
             capture_output=True,
             text=True
         )
 
-        subprocess.run(
+        # اجرای apksigner
+        apksigner_result = subprocess.run(
             [
                 "apksigner", "sign",
                 "--ks", KEYSTORE_PATH,
@@ -93,11 +95,17 @@ def sign_apk(input_apk, output_apk):
             capture_output=True,
             text=True
         )
-        return True, None
+
+        # بازگشت خروجی stdout و stderr
+        return True, f"""<b>zipalign output:</b>
+<pre>{zipalign_result.stdout}</pre>
+
+<b>apksigner output:</b>
+<pre>{apksigner_result.stdout}</pre>"""
     except subprocess.CalledProcessError as e:
-        return False, f"خطا در امضا: {e.stderr}"
+        return False, f"<b>خطای اجرایی:</b>\n<pre>{e.stderr}</pre>"
     except Exception as e:
-        return False, f"خطای عمومی: {str(e)}"
+        return False, f"<b>خطای عمومی:</b> {str(e)}"
 
 def send_message(chat_id, text, buttons=None):
     data = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
@@ -238,27 +246,33 @@ def webhook():
                             f.write(file_content)
 
                         output_apk = os.path.join(SIGNED_FOLDER, "signed_" + current_file_name)
-                        success, error = sign_apk(input_apk, output_apk)
+                        success, output_log = sign_apk(input_apk, output_apk)
 
                         if success:
-                            if send_file(
+                            # ارسال فایل APK امضا شده
+                            sent = send_file(
                                 current_chat_id,
                                 output_apk,
                                 f"""✅ فایل APK شما با موفقیت امضا شد (v2+v3، سازگار با اندروید 7.0+)!
 امضا توسط <b>#سالس_استرول</b> | <b>@RealSalesestrol</b>"""
-                            ):
+                            )
+
+                            if sent:
+                                # ارسال گزارش خروجی امضا (stdout ها)
+                                send_message(current_chat_id, output_log)
                                 os.remove(input_apk)
                                 os.remove(output_apk)
                             else:
                                 send_message(current_chat_id, "❌ خطا در ارسال فایل امضاشده!")
-                                send_message(ADMIN_ID, f"خطا در ارسال فایل امضاشده {current_file_name} به کاربر {current_user_id}")
+                                send_message(ADMIN_ID, f"❌ خطا در ارسال فایل {current_file_name} برای کاربر {current_user_id}")
                         else:
-                            send_message(current_chat_id, f"❌ خطا در امضای فایل: {error}")
-                            send_message(ADMIN_ID, f"خطا در امضای فایل {current_file_name} برای کاربر {current_user_id}: {error}")
+                            # اگر امضا موفق نبود
+                            send_message(current_chat_id, f"❌ خطا در امضای فایل:\n{output_log}")
+                            send_message(ADMIN_ID, f"❌ خطا در امضای فایل {current_file_name} برای کاربر {current_user_id}:\n{output_log}")
                             os.remove(input_apk)
                     except Exception as e:
                         send_message(current_chat_id, f"❌ خطا در پردازش فایل: {str(e)}")
-                        send_message(ADMIN_ID, f"خطا در پردازش فایل {current_file_name} برای کاربر {current_user_id}: {str(e)}")
+                        send_message(ADMIN_ID, f"❌ خطا در پردازش فایل {current_file_name} برای کاربر {current_user_id}: {str(e)}")
                     sign_queue.popleft()
 
     elif 'callback_query' in update:
