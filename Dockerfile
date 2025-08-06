@@ -16,16 +16,17 @@ RUN mkdir -p ${ANDROID_SDK_ROOT} && \
     unzip -q /tmp/cmdline-tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools && \
     mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
 
-# نصب build-tools و platform-tools
-ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${ANDROID_SDK_ROOT}/platform-tools
-RUN yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
-    echo "Verifying tools..." && \
-    ls -la ${ANDROID_SDK_ROOT}/build-tools/ && \
-    ZIPALIGN_PATH=$(find ${ANDROID_SDK_ROOT}/build-tools/ -name zipalign | head -n 1) && \
-    if [ -z "$ZIPALIGN_PATH" ]; then echo "Error: zipalign not found in 34.0.0, trying 33.0.0..." && \
-        yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;33.0.0" && \
-        ZIPALIGN_PATH=$(find ${ANDROID_SDK_ROOT}/build-tools/ -name zipalign | head -n 1); fi && \
-    if [ -z "$ZIPALIGN_PATH" ]; then echo "Error: zipalign not found!" && exit 1; else echo "Found zipalign at: ${ZIPALIGN_PATH}" && ls -la ${ZIPALIGN_PATH} && ${ZIPALIGN_PATH} --version; fi && \
+# نصب build-tools و platform-tools با چند نسخه
+ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/
+RUN echo "Installing Android tools..." && \
+    for version in 34.0.0 33.0.0 32.0.0; do \
+        yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;${version}" "platform-tools" && \
+        ZIPALIGN_PATH=$(find ${ANDROID_SDK_ROOT}/build-tools/ -name zipalign | head -n 1) && \
+        if [ -n "$ZIPALIGN_PATH" ]; then echo "Found zipalign at: ${ZIPALIGN_PATH}" && break; fi; \
+    done && \
+    if [ -z "$ZIPALIGN_PATH" ]; then echo "Error: zipalign not found in any version!" && exit 1; fi && \
+    ls -la ${ZIPALIGN_PATH} && \
+    ${ZIPALIGN_PATH} --version && \
     which apksigner && \
     apksigner --version
 
