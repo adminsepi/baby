@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     bash
 
-# نصب Android SDK و ابزارها
+# تنظیم محیط Android SDK
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
 RUN mkdir -p ${ANDROID_SDK_ROOT} && \
     wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O /tmp/cmdline-tools.zip && \
@@ -20,10 +20,11 @@ RUN mkdir -p ${ANDROID_SDK_ROOT} && \
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${ANDROID_SDK_ROOT}/platform-tools
 RUN yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "build-tools;34.0.0" "platform-tools" && \
     echo "Verifying tools..." && \
-    ls -la ${ANDROID_SDK_ROOT}/build-tools/34.0.0/ && \
-    ls -la ${ANDROID_SDK_ROOT}/platform-tools/ && \
-    which zipalign && \
-    zipalign --version && \
+    ZIPALIGN_PATH=$(find ${ANDROID_SDK_ROOT}/build-tools/ -name zipalign | head -n 1) && \
+    echo "Found zipalign at: ${ZIPALIGN_PATH}" && \
+    export ZIPALIGN_PATH=${ZIPALIGN_PATH} && \
+    ls -la ${ZIPALIGN_PATH} && \
+    ${ZIPALIGN_PATH} --version && \
     which apksigner && \
     apksigner --version
 
@@ -35,4 +36,4 @@ WORKDIR /app
 COPY . .
 
 ENV PORT=5000
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app"]
+CMD ["sh", "-c", "export ZIPALIGN_PATH=${ZIPALIGN_PATH} && gunicorn --bind 0.0.0.0:${PORT} app:app"]
