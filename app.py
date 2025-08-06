@@ -18,7 +18,7 @@ KEYSTORE_PASSWORD = "123456"  # رمز keystore
 KEY_ALIAS = "mykey"          # alias keystore
 KEY_PASSWORD = "123456"      # رمز keystore
 AVERAGE_SIGN_TIME = 30  # زمان متوسط امضا به ثانیه
-ZIPALIGN_PATH = "/opt/android-sdk/build-tools/34.0.0/zipalign"  # مسیر دستی zipalign
+ZIPALIGN_PATH = os.getenv("ZIPALIGN_PATH", "/opt/android-sdk/build-tools/34.0.0/zipalign")  # مسیر از محیط
 
 # ایجاد پوشه‌ها
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -67,7 +67,8 @@ def sign_apk(input_apk, output_apk):
             return False, f"خطا: فایل {KEYSTORE_PATH} پیدا نشد!"
 
         aligned_apk = os.path.join(SIGNED_FOLDER, "aligned_" + secure_filename(input_apk))
-        # استفاده از مسیر دستی zipalign
+        print(f"Using zipalign path: {ZIPALIGN_PATH}")  # دیباگ مسیر
+        # استفاده از مسیر از متغیر محیط
         subprocess.run(
             [ZIPALIGN_PATH, "-f", "-v", "4", input_apk, aligned_apk],
             check=True,
